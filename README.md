@@ -1,113 +1,84 @@
-# 韩师量化评教助手
+# 韩师量化评教助手（Python 版）
 
 一键自动填写韩山师范学院教务系统量化评教：第一个评分题选 **“良”**，其余全部选 **“优”**，意见建议填 **“无”**。
 
-## 🌐 在线使用（推荐）
+本脚本使用 **Playwright** 自动化浏览器完成评教，无需安装浏览器扩展。
 
-本项目已做成静态网站，小白只需点几下即可使用：
+## 📋 环境要求
 
-👉 **[点击访问在线页面](https://你的-cloudflare-pages域名.pages.dev/)**
+- Python 3.8+
+- 已安装 Microsoft Edge 浏览器（脚本默认调用系统 Edge）
 
-> 本项目推荐部署在 **Cloudflare Pages**，国内访问比 GitHub Pages 更快。脚本文件通过 **jsDelivr CDN** 分发，更新速度快。
->
-> 其他方案（本地单文件、腾讯云 CloudBase、OSS+CDN）请看 [`DEPLOY.md`](DEPLOY.md)。
+## 🚀 快速开始
 
-页面提供三种使用方式：
-1. **一键安装 Tampermonkey 脚本** — 最自动化
-2. **拖拽书签小工具到书签栏** — 无需安装扩展
-3. **复制控制台代码** — 应急使用
-
-## 📁 项目结构
-
-```
-Fill in the script/
-├── docs/                       # 静态网站（适合 Cloudflare Pages / GitHub Pages）
-│   ├── index.html              # 在线使用页面
-│   ├── style.css               # 页面样式
-│   ├── main.js                 # 页面交互（复制控制台代码等）
-│   └── auto_evaluate.user.js   # Tampermonkey 脚本
-├── release/                    # 本地单文件版（可直接发给同学）
-│   ├── index.html              # 内联了 CSS/JS 的独立网页
-│   └── auto_evaluate.user.js   # Tampermonkey 脚本
-├── auto_evaluate_tampermonkey.js   # 脚本源码
-├── auto_evaluate_playwright.py     # Python 自动化脚本
-├── DESIGN_PLAN.md                # 设计计划
-├── DEPLOY.md                       # 国内部署方案
-└── README.md                       # 本说明
-```
-
-## 🚀 部署到 Cloudflare Pages（推荐，国内访问更快）
-
-### 方法一：GitHub Actions 自动部署（已配置）
-
-项目已包含自动部署工作流 `.github/workflows/deploy-cloudflare-pages.yml`，push 到 `main` 分支后会自动部署。
-
-#### 配置步骤
-
-1. 注册 [Cloudflare](https://dash.cloudflare.com/) 账号
-2. 进入 Cloudflare 控制台右侧的 **API Tokens**，点击 **Create Token**
-3. 选择 **Custom token**，权限设置：
-   - **Zone:Read**（可选，用于自定义域名）
-   - **Cloudflare Pages:Edit**
-4. 在 GitHub 仓库进入 **Settings → Secrets and variables → Actions**
-5. 添加两个仓库秘密：
-   - `CLOUDFLARE_API_TOKEN`：上面创建的 API Token
-   - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare 控制台右侧显示的 Account ID
-6. 在 Cloudflare Pages 创建一个项目，项目名建议为 `Fill-in-the-script`
-7. 以后每次 push 到 `main` 分支，GitHub Actions 会自动部署
-
-### 方法二：Cloudflare Pages 直接连接 GitHub（更简单）
-
-1. 注册 [Cloudflare](https://dash.cloudflare.com/) 账号
-2. 进入 **Pages** 服务，选择 **Create a project**
-3. 连接本 GitHub 仓库
-4. 构建设置：
-   - Framework preset: **None**
-   - Build command: 留空
-   - Build output directory: `docs`
-5. 点击 **Save and Deploy**
-
-### 自定义域名（可选）
-
-如果你有自己的域名，绑定到 Cloudflare Pages 后国内访问会更快更稳定。
-
-### 部署完成后
-
-把 `https://你的-project-name.pages.dev/` 替换到本 README 和页面中的链接。
-
-## 💻 本地预览网站
-
-如果你想在本地预览生成的静态页面：
+### 1. 克隆仓库
 
 ```bash
-cd docs
-# 方式1：Python 3
-python -m http.server 8000
-
-# 方式2：Node.js
-npx serve
-
-# 方式3：VS Code 安装 Live Server 插件，右键 index.html 选择 Open with Live Server
+git clone https://github.com/jingwei108/Fill-in-the-script.git
+cd Fill-in-the-script
 ```
 
-然后浏览器访问 `http://localhost:8000`。
-
-## 🛠️ 开发说明
-
-### 修改脚本
-
-编辑 `docs/auto_evaluate.user.js` 或根目录的 `auto_evaluate_tampermonkey.js`，修改后把根目录的同步复制到 `docs/` 下：
+### 2. 安装依赖
 
 ```bash
-cp auto_evaluate_tampermonkey.js docs/auto_evaluate.user.js
+pip install -r requirements.txt
 ```
 
-### 修改网页内容
+脚本默认使用系统已安装的 Microsoft Edge，无需额外下载浏览器。
 
-直接编辑 `docs/index.html` 和 `docs/style.css` 即可。
+### 3. 运行脚本
 
-## ⚠️ 安全提示
+```bash
+python auto_evaluate_playwright.py
+```
 
-- 所有脚本均在本地浏览器运行，不会上传账号密码
+运行后会自动打开浏览器并跳转到教务系统首页。
+
+### 4. 手动登录
+
+在打开的浏览器窗口中手动登录教务系统，登录成功后脚本会自动继续。
+
+### 5. 等待完成
+
+脚本会自动：
+1. 进入量化评教列表
+2. 逐个打开待评课程
+3. 自动选择评分（一良其余优）
+4. 填写意见建议“无”
+5. 提交并继续下一门
+
+## ⚙️ 配置说明
+
+编辑 `auto_evaluate_playwright.py` 顶部的配置区：
+
+```python
+SUGGESTION_TEXT = "无"      # 建议内容
+LIANG_INDEX = 0             # 第几题填“良”：0=第一题，-1=最后一题，None=随机
+AUTO_SUBMIT = True          # 是否自动提交
+AUTO_NEXT = True            # 是否自动继续下一门
+DELAY = 0.8                 # 提交前等待秒数
+```
+
+## ⚠️ 注意事项
+
+- 脚本运行时会打开真实浏览器窗口，方便登录和观察进度
+- 所有操作均在本地完成，不会上传账号密码到任何服务器
+- 评教前请确认当前学期评教已开放
 - 建议先在一门课程上测试，确认无误后再批量使用
 - 请合理使用，遵守学校相关规定
+
+## 🛠️ 常见问题
+
+**Q: 运行时报错 `ModuleNotFoundError: No module named 'playwright'`？**
+A: 先执行 `pip install -r requirements.txt`。
+
+**Q: 浏览器没打开？**
+A: 脚本使用非无头模式，会调用系统 Edge。请确保电脑已安装 Edge；如需使用其他浏览器，修改 `auto_evaluate_playwright.py` 中的 `BROWSER_CHANNEL` 配置。
+
+**Q: 登录后脚本没继续？**
+A: 登录成功后页面会自动跳转，脚本检测到非登录页就会继续。如果长时间没反应，按回车或刷新页面。
+
+**Q: 自动点击提交按钮没反应，但手动点击可以弹出确认框？**
+A: 这是因为提交按钮 `#sub` 位于 iframe 内部，且它的点击事件是通过 `addEventListener` 绑定的，直接用 `el.click()` 或 Playwright 的 `click()` 无法触发。
+
+当前版本已修复：脚本会切换到 iframe 的 document，dispatch 完整的鼠标事件（`mousedown` → `mouseup` → `click`）来触发提交；同时提前注册 `dialog` handler，自动接受提交后的确认弹窗，避免被 Playwright 默认 dismiss 而阻塞提交。
