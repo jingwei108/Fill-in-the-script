@@ -13,7 +13,9 @@
 
 ### 方式一：直接运行 EXE（推荐，无需 Python 环境）
 
-1. 下载 `release/韩师评教助手.exe`
+1. **点击下载 EXE**
+   - [Gitee 下载（推荐国内访问）](https://gitee.com/liangs-horizon/Fill-in-the-script/raw/main/release/韩师评教助手.exe)
+   - [GitHub 下载（备用）](https://github.com/jingwei108/Fill-in-the-script/raw/main/release/韩师评教助手.exe)
 2. 双击运行
 3. 在弹出的浏览器窗口中手动登录教务系统
 4. 登录成功后脚本自动完成评教
