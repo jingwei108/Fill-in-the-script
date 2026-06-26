@@ -1,3 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# PyInstaller
+build/
+*.spec
+
+# Debug screenshots
+debug_*.png
+
+# Distribution / packaging (EXE 发布到 release/ 目录)
+dist/
+
 # wrangler files
 .wrangler
 .dev.vars*

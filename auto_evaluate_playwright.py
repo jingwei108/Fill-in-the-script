@@ -32,8 +32,8 @@ WEBVPN_PREFIX = "https://webvpn.hstc.edu.cn/https/77726476706e697374686562657374
 BASE_URL = "https://jw.hstc.edu.cn/eams/homeExt.action"
 # 学校的 CAS 统一认证登录页
 CAS_LOGIN_URL = "https://hscas.hstc.edu.cn/cas/login"
-# 量化评教列表地址
-EVALUATE_LIST_URL = "https://jw.hstc.edu.cn/eams/teacherEvaluation!search.action"
+# 量化评教列表地址（从底部状态栏观察到的实际地址）
+EVALUATE_LIST_URL = "https://jw.hstc.edu.cn/eams/quality/stdEvaluate.action"
 
 
 def to_webvpn_url(url: str) -> str:
@@ -122,49 +122,331 @@ def wait_for_login(page: Page, timeout: int = 120):
     raise TimeoutError("等待登录超时")
 
 
+def _any_frame_has_evaluation_link(page: Page) -> bool:
+    """检查 page 或任一 iframe 中是否已出现'进行评教'链接"""
+    for ctx in [page] + list(page.frames):
+        try:
+            if ctx.locator('a:has-text("进行评教")').count() > 0:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _find_menu_by_playwright(ctx, text: str):
+    """用 Playwright 定位器查找包含 text 的可见菜单元素"""
+    # 方法1：语义化定位
+    try:
+        el = ctx.get_by_text(text).first
+        if el.is_visible(timeout=2000):
+            return el
+    except Exception:
+        pass
+
+    # 方法2：多种 CSS 选择器兜底
+    selectors = [
+        f'header a:has-text("{text}")',
+        f'.navbar a:has-text("{text}")',
+        f'.nav a:has-text("{text}")',
+        f'.el-menu a:has-text("{text}")',
+        f'.menu a:has-text("{text}")',
+        f'.topnav a:has-text("{text}")',
+        f'a:has-text("{text}")',
+        f'li:has-text("{text}")',
+        f'span:has-text("{text}")',
+        f'div:has-text("{text}")',
+    ]
+    for sel in selectors:
+        try:
+            el = ctx.locator(sel).first
+            if el.is_visible(timeout=1500):
+                return el
+        except Exception:
+            pass
+    return None
+
+
+def _click_menu_by_js(ctx, text: str) -> bool:
+    """用 JS 直接查找并点击包含 text 的可见元素，不依赖 Playwright 定位"""
+    try:
+        clicked = ctx.evaluate(f'''() => {{
+            const elements = Array.from(document.querySelectorAll('a, li, span, div, button'));
+            for (const el of elements) {{
+                if (el.textContent.trim().includes('{text}') && el.offsetParent !== null) {{
+                    el.scrollIntoView({{block: 'center', behavior: 'instant'}});
+                    el.dispatchEvent(new MouseEvent('mouseover', {{bubbles: true}}));
+                    el.dispatchEvent(new MouseEvent('mousedown', {{bubbles: true}}));
+                    el.dispatchEvent(new MouseEvent('mouseup', {{bubbles: true}}));
+                    el.dispatchEvent(new MouseEvent('click', {{bubbles: true}}));
+                    if (el.click) el.click();
+                    return true;
+                }}
+            }}
+            return false;
+        }}''')
+        return bool(clicked)
+    except Exception:
+        return False
+
+
+def _click_hover_submenu(ctx, text: str) -> bool:
+    """处理 hover 下拉菜单：先悬浮顶部菜单，再点击下拉项里的同名文字"""
+    try:
+        # 找到顶部菜单
+        menu = _find_menu_by_playwright(ctx, text)
+        if not menu:
+            return False
+
+        # 悬浮触发下拉，多等一会儿让下拉菜单渲染
+        menu.hover(timeout=3000)
+        sleep(2)
+
+        # 方法1：找所有可见的同名元素，选择 y 坐标最大的（最靠下的下拉项）
+        candidates = ctx.locator(f'text={text}').all()
+        best = None
+        best_y = -1
+        for el in candidates:
+            try:
+                if not el.is_visible(timeout=1000):
+                    continue
+                box = el.bounding_box()
+                if not box:
+                    continue
+                if box['y'] > best_y:
+                    best_y = box['y']
+                    best = el
+            except Exception:
+                continue
+
+        if best:
+            print(f"[信息] 点击下拉菜单项（方法1）...")
+            best.scroll_into_view_if_needed(timeout=2000)
+            best.click(timeout=5000)
+            return True
+
+        # 方法2：在下拉菜单容器中按文字查找
+        submenu_selectors = [
+            '.dropdown-menu',
+            '.submenu',
+            '.menu-list',
+            '.el-dropdown-menu',
+            '.el-menu--popup',
+            '.nav-submenu',
+            '.dropdown',
+        ]
+        for container_sel in submenu_selectors:
+            try:
+                container = ctx.locator(container_sel).first
+                if container.is_visible(timeout=1500):
+                    el = container.locator(f'text={text}').first
+                    if el.is_visible(timeout=1500):
+                        print(f"[信息] 点击下拉菜单项（方法2: {container_sel}）...")
+                        el.scroll_into_view_if_needed(timeout=2000)
+                        el.click(timeout=5000)
+                        return True
+            except Exception:
+                continue
+
+        return False
+    except Exception:
+        return False
+
+
+def _click_hover_submenu_by_js(ctx, text: str) -> bool:
+    """用 JS 直接处理 hover 下拉菜单：悬浮顶部菜单，点击最下方的下拉项"""
+    try:
+        clicked = ctx.evaluate(f'''() => {{
+            const all = Array.from(document.querySelectorAll('a, li, span, div, button'));
+            const candidates = all.filter(el => el.textContent.trim() === '{text}' && el.offsetParent !== null);
+            if (candidates.length === 0) return false;
+
+            // 按垂直位置排序，最上面的是顶部菜单，最下面的是下拉项
+            candidates.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+            const topMenu = candidates[0];
+            const subMenu = candidates[candidates.length - 1];
+
+            // 悬浮顶部菜单
+            topMenu.dispatchEvent(new MouseEvent('mouseover', {{bubbles: true}}));
+            topMenu.dispatchEvent(new MouseEvent('mouseenter', {{bubbles: true}}));
+
+            // 延迟点击下拉项
+            setTimeout(() => {{
+                subMenu.scrollIntoView({{block: 'center', behavior: 'instant'}});
+                subMenu.dispatchEvent(new MouseEvent('mouseover', {{bubbles: true}}));
+                subMenu.dispatchEvent(new MouseEvent('mousedown', {{bubbles: true}}));
+                subMenu.dispatchEvent(new MouseEvent('mouseup', {{bubbles: true}}));
+                subMenu.dispatchEvent(new MouseEvent('click', {{bubbles: true}}));
+                if (subMenu.click) subMenu.click();
+            }}, 500);
+
+            return true;
+        }}''')
+        sleep(1.5)  # 等待 setTimeout 执行
+        return bool(clicked)
+    except Exception:
+        return False
+
+
+def _click_hover_submenu_by_mouse(page: Page, text: str) -> bool:
+    """用真实鼠标移动来处理 hover 下拉菜单：移动到顶部菜单，再移动到下拉项点击"""
+    try:
+        # 找到顶部菜单
+        menu = _find_menu_by_playwright(page, text)
+        if not menu:
+            return False
+
+        box = menu.bounding_box()
+        if not box:
+            return False
+
+        # 移动鼠标到顶部菜单中心，触发 hover
+        cx = box['x'] + box['width'] / 2
+        cy = box['y'] + box['height'] / 2
+        page.mouse.move(cx, cy)
+        sleep(1.5)  # 等待下拉菜单渲染
+
+        # 查找下拉项：所有可见的同名元素中 y 坐标最大的
+        candidates = page.locator(f'text={text}').all()
+        best = None
+        best_y = -1
+        for el in candidates:
+            try:
+                if not el.is_visible(timeout=1000):
+                    continue
+                box2 = el.bounding_box()
+                if not box2:
+                    continue
+                # 排除顶部菜单本身（y 坐标接近）
+                if abs(box2['y'] - box['y']) < 10:
+                    continue
+                if box2['y'] > best_y:
+                    best_y = box2['y']
+                    best = el
+            except Exception:
+                continue
+
+        if best:
+            box2 = best.bounding_box()
+            sx = box2['x'] + box2['width'] / 2
+            sy = box2['y'] + box2['height'] / 2
+            page.mouse.move(sx, sy)
+            sleep(0.5)
+            page.mouse.click(sx, sy)
+            print(f"[信息] 已用鼠标点击下拉菜单项")
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
 def navigate_to_evaluation_list(page: Page):
     """导航到量化评教列表页"""
     print("[步骤] 正在进入量化评教列表页...")
-    # 先回到首页
+
+    # 方法0：直接访问评教列表 URL（最可靠）
+    try:
+        print(f"[信息] 尝试直接跳转评教列表: {EVALUATE_LIST_URL}")
+        page.goto(EVALUATE_LIST_URL, wait_until='networkidle')
+        sleep(2)
+        if _any_frame_has_evaluation_link(page):
+            print("[信息] 已直接跳转到量化评教列表")
+            return
+        else:
+            print("[警告] 直接跳转后未找到评教链接，回到首页尝试点击菜单")
+    except Exception as e:
+        print(f"[警告] 直接跳转失败: {e}")
+
+    # 回到首页，准备点击菜单
     page.goto(BASE_URL, wait_until='networkidle')
     sleep(2)
 
-    # 方法1：直接点击顶部导航中的“量化评教”
     clicked = False
-    try:
-        menu = page.locator('header a:has-text("量化评教"), .navbar a:has-text("量化评教"), .nav a:has-text("量化评教"), .el-menu a:has-text("量化评教"), a:has-text("量化评教")').first
-        if menu.is_visible(timeout=3000):
-            print("[信息] 点击顶部'量化评教'菜单...")
-            menu.click(timeout=5000)
-            sleep(3)
+
+    # 方法1：真实鼠标移动处理 hover 下拉菜单
+    print("[信息] 尝试用鼠标移动点击 hover 下拉菜单...")
+    if _click_hover_submenu_by_mouse(page, "量化评教"):
+        clicked = True
+    else:
+        for idx, frame in enumerate(page.frames):
+            if _click_hover_submenu_by_mouse(frame, "量化评教"):
+                print(f"[信息] 已在 frame[{idx}] 中用鼠标点击下拉菜单")
+                clicked = True
+                break
+
+    # 方法2：JS 处理 hover 下拉菜单
+    if not clicked:
+        print("[信息] 尝试用 JS 点击 hover 下拉菜单...")
+        if _click_hover_submenu_by_js(page, "量化评教"):
             clicked = True
-    except Exception as e:
-        print(f"[警告] 直接点击菜单失败: {e}")
-
-    # 方法2：尝试 hover 后点击下拉菜单里的“量化评教”
-    if not clicked or page.locator('a:has-text("进行评教")').count() == 0:
-        try:
-            menu = page.locator('header:has-text("量化评教"), .navbar:has-text("量化评教"), .nav:has-text("量化评教")').locator('text=量化评教').first
-            if menu.is_visible(timeout=2000):
-                print("[信息] 展开'量化评教'下拉菜单...")
-                menu.hover(timeout=3000)
-                sleep(1)
-                # 下拉菜单中的“量化评教”
-                submenu = page.locator('a:has-text("量化评教")').filter(has_text='量化评教').nth(1)
-                if submenu.is_visible(timeout=2000):
-                    submenu.click(timeout=5000)
-                    sleep(3)
+        else:
+            for idx, frame in enumerate(page.frames):
+                if _click_hover_submenu_by_js(frame, "量化评教"):
+                    print(f"[信息] 已在 frame[{idx}] 中用 JS 点击下拉菜单")
                     clicked = True
-        except Exception as e:
-            print(f"[警告] 下拉菜单点击失败: {e}")
+                    break
 
-    # 等待 AJAX 加载
-    sleep(3)
+    # 方法3：Playwright 处理 hover 下拉菜单
+    if not clicked:
+        print("[信息] 尝试用 Playwright 点击 hover 下拉菜单...")
+        if _click_hover_submenu(page, "量化评教"):
+            clicked = True
+        else:
+            for idx, frame in enumerate(page.frames):
+                if _click_hover_submenu(frame, "量化评教"):
+                    print(f"[信息] 已在 frame[{idx}] 中点击下拉菜单")
+                    clicked = True
+                    break
 
-    # 检查是否已经有“进行评教”链接
-    link_count = page.locator('a:has-text("进行评教")').count()
-    if link_count > 0:
-        print(f"[信息] 已通过菜单进入量化评教列表，找到 {link_count} 个待评课程")
+    # 方法4：普通 Playwright 点击主页面菜单
+    if not clicked:
+        menu = _find_menu_by_playwright(page, "量化评教")
+        if menu:
+            try:
+                print("[信息] 点击顶部'量化评教'菜单...")
+                menu.scroll_into_view_if_needed(timeout=2000)
+                menu.click(timeout=5000)
+                clicked = True
+            except Exception as e:
+                print(f"[警告] Playwright 点击菜单失败: {e}")
+
+    # 方法5：普通 Playwright 点击 iframe 中的菜单
+    if not clicked:
+        for idx, frame in enumerate(page.frames):
+            menu = _find_menu_by_playwright(frame, "量化评教")
+            if menu:
+                try:
+                    print(f"[信息] 在 frame[{idx}] 中点击'量化评教'菜单...")
+                    menu.scroll_into_view_if_needed(timeout=2000)
+                    menu.click(timeout=5000)
+                    clicked = True
+                    break
+                except Exception as e:
+                    print(f"[警告] 在 frame[{idx}] 点击菜单失败: {e}")
+
+    # 方法6：JS 强制点击兜底
+    if not clicked:
+        print("[信息] 尝试用 JS 强制点击菜单...")
+        if _click_menu_by_js(page, "量化评教"):
+            clicked = True
+        else:
+            for idx, frame in enumerate(page.frames):
+                if _click_menu_by_js(frame, "量化评教"):
+                    print(f"[信息] 已在 frame[{idx}] 中用 JS 点击菜单")
+                    clicked = True
+                    break
+
+    # 等待评教列表加载，最多等 12 秒
+    if clicked:
+        print("[信息] 等待评教列表加载...")
+        for _ in range(12):
+            sleep(1)
+            if _any_frame_has_evaluation_link(page):
+                break
+
+    # 检查结果
+    if _any_frame_has_evaluation_link(page):
+        print("[信息] 已成功进入量化评教列表")
     elif clicked:
         print("[警告] 菜单点击后未找到'进行评教'链接，可能是 AJAX 加载问题")
         print("[提示] 请在浏览器中手动点击'量化评教'菜单，然后按回车键继续...")
@@ -173,17 +455,6 @@ def navigate_to_evaluation_list(page: Page):
         print("[错误] 无法自动点击菜单")
         print("[提示] 请在浏览器中手动点击'量化评教'菜单，然后按回车键继续...")
         input()
-
-    # 处理 iframe
-    frames = page.frames
-    if len(frames) > 1:
-        print(f"[信息] 检测到 {len(frames)} 个 frame，尝试在所有 frame 中查找评教链接")
-        for idx, frame in enumerate(frames):
-            try:
-                count = frame.locator('a:has-text("进行评教")').count()
-                print(f"[信息] frame[{idx}] 中找到 {count} 个'进行评教'链接")
-            except Exception:
-                pass
 
 
 def find_evaluation_frame(page: Page):

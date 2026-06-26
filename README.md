@@ -11,14 +11,23 @@
 
 ## 🚀 快速开始
 
-### 1. 克隆仓库
+### 方式一：直接运行 EXE（推荐，无需 Python 环境）
+
+1. 下载 `release/韩师评教助手.exe`
+2. 双击运行
+3. 在弹出的浏览器窗口中手动登录教务系统
+4. 登录成功后脚本自动完成评教
+
+### 方式二：从源码运行
+
+#### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/jingwei108/Fill-in-the-script.git
 cd Fill-in-the-script
 ```
 
-### 2. 安装依赖
+#### 2. 安装依赖
 
 ```bash
 pip install -r requirements.txt
@@ -26,7 +35,7 @@ pip install -r requirements.txt
 
 脚本默认使用系统已安装的 Microsoft Edge，无需额外下载浏览器。
 
-### 3. 运行脚本
+#### 3. 运行脚本
 
 ```bash
 python auto_evaluate_playwright.py
@@ -66,6 +75,19 @@ DELAY = 0.8                 # 提交前等待秒数
 - 评教前请确认当前学期评教已开放
 - 建议先在一门课程上测试，确认无误后再批量使用
 - 请合理使用，遵守学校相关规定
+
+## 📦 重新打包
+
+如果你修改了源码，可以双击运行 `build.bat` 重新生成 EXE。
+
+或者手动执行：
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --name "韩师评教助手" --console auto_evaluate_playwright.py
+```
+
+生成的可执行文件位于 `dist/韩师评教助手.exe`。发布时请复制到 `release/` 目录。
 
 ## 🛠️ 常见问题
 
